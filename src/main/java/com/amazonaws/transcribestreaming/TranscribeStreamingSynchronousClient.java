@@ -26,6 +26,7 @@ import software.amazon.awssdk.services.transcribestreaming.model.StartStreamTran
 import software.amazon.awssdk.services.transcribestreaming.model.TranscriptEvent;
 
 import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.UnsupportedAudioFileException;
 import java.io.File;
 import java.io.FileInputStream;
@@ -52,7 +53,9 @@ public class TranscribeStreamingSynchronousClient {
 
     public String transcribeFile(File audioFile) {
         try {
-            int sampleRate = (int) AudioSystem.getAudioInputStream(audioFile).getFormat().getSampleRate();
+            AudioInputStream aiStream = AudioSystem.getAudioInputStream(audioFile);
+            int sampleRate = (int) aiStream.getFormat().getSampleRate();
+            int sampleTime = (int) aiStream.getFrameLength()/(sampleRate/1000);
             StartStreamTranscriptionRequest request = StartStreamTranscriptionRequest.builder()
                     .languageCode(LanguageCode.EN_US.toString())
                     .mediaEncoding(MediaEncoding.PCM)
@@ -60,10 +63,17 @@ public class TranscribeStreamingSynchronousClient {
                     .build();
             AudioStreamPublisher audioStream = new AudioStreamPublisher(new FileInputStream(audioFile));
             StartStreamTranscriptionResponseHandler responseHandler = getResponseHandler();
-            System.out.println("launching request");
+            System.out.format("Launching request to transcribe %d ms...", sampleTime);
+            System.out.println();
+            long start = System.currentTimeMillis();
             CompletableFuture<Void> resultFuture = asyncClient.startStreamTranscription(request, audioStream, responseHandler);
-            System.out.println("waiting for response, this will take some time depending on the length of the audio file");
+            //System.out.println("waiting for response, this will take some time depending on the length of the audio file\n");
             resultFuture.get(MAX_TIMEOUT_MS, TimeUnit.MILLISECONDS); //block until done
+            long duration = System.currentTimeMillis() - start;
+            System.out.println();
+            System.out.format("Elapsed %d ms, ", duration);
+            System.out.format("RT ratio: %1.3f", (float)duration/sampleTime);
+            System.out.println();
         } catch (IOException e) {
             System.out.println("Error reading audio file (" + audioFile.getName() + ") : " + e);
             throw new RuntimeException(e);
